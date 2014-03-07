@@ -4,17 +4,7 @@ use 5.010001;
 use strict;
 use warnings;
 
-use Data::Sah;
-use Perinci::Access::Perl 0.54;
-
-my $sah = Data::Sah->new();
-my $plc = $sah->get_compiler("perl");
-$plc->indent_character('');
-my $pa  = Perinci::Access::Perl->new(
-    load               => 0,
-    cache_size         => 0,
-    extra_wrapper_args => {remove_internal_properties=>0},
-);
+use Perinci::Sub::Wrapper qw(wrap_sub);
 
 # VERSION
 
@@ -29,8 +19,28 @@ with (
     },
 );
 
-sub __squish_code {
-    my $code = shift;
+# the content will actually be eval'ed
+has debug => (
+    isa     => 'Bool',
+    default => sub { 0 },
+    is      => 'rw',
+);
+
+# the content will actually be eval'ed
+has wrap_args => (
+    isa     => 'Str',
+    default => sub { '{}' },
+    is      => 'rw',
+);
+
+has _wrap_args_compiled => (
+    isa => 'Bool',
+    is  => 'rw',
+);
+
+sub _squish_code {
+    my ($self, $code) = @_;
+    return $code if $self->debug;
     for ($code) {
         s/^\s*#.+//mg; # comment line
         s/^\s+//mg;    # indentation
@@ -49,6 +59,21 @@ sub munge_files {
 sub munge_file {
     my ($self, $file) = @_;
 
+    state $wrap_args;
+    unless ($self->_wrap_args_compiled) {
+        $self->log_debug("Compiling code in wrap_args option ...");
+        my $val = $self->wrap_args;
+        if ($val) {
+            $val = eval $val;
+            $self->log_fatal('wrap_args must evaluate to a hashref')
+                unless ref($val) eq 'HASH';
+            $wrap_args = $val;
+        } else {
+            $wrap_args = {};
+        }
+        $self->_wrap_args_compiled(1);
+    }
+
     my $fname = $file->name;
     $self->log_debug("Processing file $fname ...");
 
@@ -56,7 +81,11 @@ sub munge_file {
         #$self->log_debug("Skipping: '$fname' not a module");
         return;
     }
-    my $reqname = $1;
+    my $req_name = $1;
+
+    my $pkg_name = $req_name;
+    $pkg_name =~ s/\.pm$//;
+    $pkg_name =~ s!/!::!g;
 
     # i do it this way (unshift @INC, "lib" + require "Foo/Bar.pm" instead of
     # unshift @INC, "." + require "lib/Foo/Bar.pm") in my all other Dist::Zilla
@@ -66,144 +95,54 @@ sub munge_file {
 
     local @INC = ("lib", @INC);
 
-    eval { require $reqname };
+    eval { require $req_name };
     if ($@) {
         $self->log_fatal("$fname: has compile errors: $@");
         return;
     }
 
     my @content = split /^/, $file->content;
-    my $munged;
-    my $in_pod;
-    my ($pkg_name, $sub_name, $metas, $meta, $arg, $var);
-    my $sub_has_vargs; # VALIDATE_ARGS has been declared for current sub
-    my %vargs; # list of validated args for current sub, val 2=skipped
-    my %vsubs; # list of subs
-    my %vars;    # list of variables that the generated validator needs
-    my @modules; # list of modules that the generated validator needs
+    my %wres; # wrap results
+    my $metas = do { no strict 'refs'; \%{"$pkg_name\::SPEC"} };
+
+    my @requires; # list of requires that the wrapper code needs
+    # generate wrapper for all subs
+    for (keys %$metas) {
+        next unless /\A\w+\z/; # skip non-functions
+        $self->log_debug("Generating wrapper code for sub '$_' ...");
+        my $res = wrap_sub(
+            %{ $wrap_args },
+            sub_name  => "$pkg_name\::$_",
+            meta      => $metas->{$_},
+            meta_name => "\$$pkg_name\::SPEC{$_}",
+            _extra_sah_compiler_args => {comment=>0},
+            embed=>1,
+        );
+        unless ($res->[0] == 200) {
+            $self->log_fatal("Can't wrap $_: $res->[0] - $res->[1]");
+            return;
+        }
+        $wres{$_} = $res->[2];
+        my $src = $res->[2]{source};
+        for (split /^/, $src->{presub1}) {
+            push @requires, $_ unless $_ ~~ @requires;
+        }
+    }
+
+    return unless keys %wres;
 
     my $i = 0; # line number
+    my $in_pod;
+    my $sub_name; # current subname
+    my $sub_indent;
 
-    my $check_prev_sub = sub {
-        return unless $sub_name;
-        return unless $meta;
-        my %unvalidated;
-        for (keys %{ $meta->{args} }) {
-            next unless $meta->{args}{$_}{schema};
-            $unvalidated{$_}++ unless $vargs{$_};
-        }
-        if (keys %unvalidated) {
-            $self->log("NOTICE: $fname: Some argument(s) not validated ".
-                           "for sub $sub_name: ".
-                               join(", ", sort keys %unvalidated));
-        } elsif ((grep {$_==1} values %vargs) &&
-                     !defined($meta->{"_perinci.sub.wrapper.validate_args"})) {
-            $self->log(
-                "NOTICE: $fname: You might want to set ".
-                    "_perinci.sub.wrapper.validate_args => 0 in metadata ".
-                        "for sub $sub_name");
-        }
-    };
+    my $has_put_preamble;
+    my $has_postamble;
+    my $has_put_postamble;
 
-    my $gen_err = sub {
-        my ($status, $msg, $cond) = @_;
-        if ($meta->{result_naked}) {
-            return qq[if ($cond) { die $msg } ];
-        } else {
-            return qq|if ($cond) { return [$status, $msg] } |;
-        }
-    };
-    my $gen_merr = sub {
-        my ($cond, $arg) = @_;
-        $gen_err->(400, qq["Missing argument: $arg"], $cond);
-    };
-    my $gen_verr = sub {
-        my ($cond, $arg) = @_;
-        $gen_err->(400, qq["Invalid argument value for $arg: \$arg_err"],
-                   $cond);
-    };
+    # no package declaration found, deduce from the file name
 
-    my $gen_arg = sub {
-        my $meta = $metas->{$sub_name};
-        my $dn = $arg; $dn =~ s/\W+/_/g;
-        my $cd = $plc->compile(
-            schema      => $meta->{args}{$arg}{schema},
-            err_term    => '$arg_err',
-            data_name   => $dn,
-            data_term   => $var,
-            return_type => 'str',
-            comment     => 0,
-        );
-        my @code;
-        for (@{$cd->{modules}}) {
-            push @code, $plc->stmt_require_module($_, $cd) unless $_ ~~ @modules;
-            push @modules, $_;
-        }
-        for (sort keys %{$cd->{vars}}) {
-            push @code, "my \$$_ = ".$plc->literal($cd->{vars}{$_})."; "
-                unless exists($vars{$_});
-            $vars{$_}++;
-        }
-        push @code, 'my $arg_err; ' unless keys %vargs;
-        push @code, __squish_code($cd->{result}), "; ";
-        push @code, $gen_verr->('$arg_err', $arg);
-        $vargs{$arg} = 1;
-        join "", @code;
-    };
-
-    my $gen_args = sub {
-        my @code;
-        for my $arg (sort keys %{ $meta->{args} }) {
-            my $as = $meta->{args}{$arg};
-            my $s = $meta->{args}{$arg}{schema};
-            my $sn;
-            if ($s) {
-                $sn = $sah->normalize_schema($s);
-            }
-            my $has_default = $sn && defined($sn->[1]{default});
-            my $kvar; # var to access a hash key
-            $kvar = $var; $kvar =~ s/.//;
-            $kvar = join(
-                "",
-                "\$$kvar",
-                (($meta->{args_as} // "hash") eq "hashref" ? "->" : ""),
-                "{'$arg'}",
-            );
-            if ($as->{req}) {
-                push @code, $gen_merr->("!exists($kvar)", $arg);
-            }
-            if ($sn) {
-                my $dn = $arg; $dn =~ s/\W+/_/g;
-                my $cd = $plc->compile(
-                    schema      => $sn,
-                    schema_is_normalized => 1,
-                    err_term    => '$arg_err',
-                    data_name   => $dn,
-                    data_term   => $kvar,
-                    return_type => 'str',
-                    comment     => 0,
-                );
-                for (@{$cd->{modules}}) {
-                    push @code, $plc->stmt_require_module($_, $cd) unless $_ ~~ @modules;
-                    push @modules, $_;
-                }
-                for (sort keys %{$cd->{vars}}) {
-                    push @code, "my \$$_ = ".$plc->literal($cd->{vars}{$_})."; "
-                        unless exists($vars{$_});
-                    $vars{$_}++;
-                }
-                push @code, 'my $arg_err; ' unless keys %vargs;
-                $vargs{$arg} = 1;
-                my $wrap = !$as->{req} && !$has_default;
-                push @code, "if (exists($kvar)) { " if $wrap;
-                push @code, __squish_code($cd->{result}), "; ";
-                push @code, $gen_verr->('$arg_err', $arg);
-                push @code, "}"                     if $wrap;
-            }
-        }
-        join "", @code;
-    };
-
+  LINE:
     for (@content) {
         $i++;
         if (/^=cut\b/x) {
@@ -215,113 +154,71 @@ sub munge_file {
             $in_pod++;
             next;
         }
-        if (/^\s*package \s+ (\w+(?:::\w+)*)/x) {
-            $pkg_name = $1;
-            $self->log_debug("Found package declaration $pkg_name");
-            my $uri = "pl:/$pkg_name/"; $uri =~ s!::!/!g;
-            my $res = $pa->request(child_metas => $uri);
-            unless ($res->[0] == 200) {
-                $self->log_fatal(
-                    "$fname: can't child_metas => $uri: ".
-                        "$res->[0] - $res->[2]");
+
+        if (/^(\s*)sub \s+ (\w+)/x) {
+            $self->log_debug("Found sub declaration: $2");
+            unless ($sub_name) {
+                # this is the first sub, let's put all requires here
+                $_ = $self->_squish_code(join "", @requires) . " " . $_;
+            }
+            ($sub_indent, $sub_name) = ($1, $2);
+            next unless $wres{$sub_name};
+            # put modify-meta code
+            $_ = $self->_squish_code($wres{$sub_name}{source}{presub2}) . $_;
+            $has_put_preamble  = 0 || !$wres{$sub_name}{source}{preamble};
+            $has_postamble     = $wres{$sub_name}{source}{postamble} ? 1:0;
+            $has_put_postamble = 0 || !$has_postamble;
+            next;
+        }
+
+        next unless $sub_name;
+
+        # 'my %args = @_' statement
+        if (/^\s*my \s+ [%@$]args \s* = /x) {
+            # put preamble code
+            my $preamble = $wres{$sub_name}{source}{preamble};
+            if ($has_postamble) {
+                $preamble .= '$_w_res = do { ';
+            }
+            $_ .= $self->_squish_code($preamble);
+            $has_put_preamble = 1;
+            next;
+        }
+
+        # sub closing statement
+        if (/^${sub_indent}\}/) {
+            unless ($has_put_preamble) {
+                $self->log_fatal("[sub $sub_name] hasn't put preamble wrapper code yet");
                 return;
             }
-            $metas = $res->[2];
+            next unless $has_postamble;
+
+            # put postamble code
+            my $postamble = "}; " . # for closing of the do { block
+                $wres{$sub_name}{source}{postamble};
+            $_ = $self->_squish_code($postamble) . " " . $_;
+            $has_put_postamble = 1;
+
+            # mark sub done by deleting entry from %wres
+            delete $wres{$sub_name};
+
             next;
         }
-        if (/^\s*sub \s+ (\w+)/x) {
-            $self->log_debug("Found sub declaration $1");
-            unless ($pkg_name) {
-                $self->log_fatal(
-                    "$fname:$i: module does not have package definition");
-            }
-            $check_prev_sub->();
-            $sub_name      = $1;
-            $sub_has_vargs = 0;
-            %vargs         = ();
-            @modules       = ();
-            %vars          = ();
-            $meta          = $metas->{$sub_name};
-            next;
-        }
-        if (/^\s*?
-             (?<code>\s* my \s+ (?<sigil>[\$@%]) (?<var>\w+) \b .+)?
-             (?<tag>\#\s*(?<no>NO_)?VALIDATE_ARG(?<s> S)?
-                 (?: \s+ (?<var2>\w+))? \s*$)/x) {
-            my %m = %+;
-            $self->log_debug("Found line with tag $_, m=" .
-                                 join(', ', map {"$_=>$m{$_}"} keys %m));
-            next if !$m{no} && !$m{code};
-            $arg = $m{var2} // $m{var};
-            if ($m{no}) {
-                if ($m{s}) {
-                    %vargs = map {$_=>2} keys %{$meta->{args} // {}};
-                } else {
-                    $vargs{$arg} = 2;
-                }
-                next;
-            }
-            $var = $m{sigil} . $m{var};
-            unless ($sub_name) {
-                $self->log_fatal("$fname:$i: # VALIDATE_ARG$m{s} outside sub");
-            }
-            unless ($meta) {
-                $self->log_fatal(
-                    "$fname:$i: sub $sub_name does not have metadata");
-            }
-            if (($meta->{v} // 1.0) != 1.1) {
-                $self->log_fatal(
-                    "$fname:$i: metadata for sub $sub_name is not v1.1 ".
-                        "(currently only v1.1 is supported)");
-            }
-            if (($meta->{args_as} // "hash") !~ /^hash(ref)?$/) {
-                $self->log_fatal(
-                    "$fname:$i: metadata for sub $sub_name: ".
-                        "args_as=$meta->{args_as} (sorry, currently only ".
-                            "args_as=hash/hashref supported)");
-            }
-            unless ($meta->{args}) {
-                $self->log_fatal(
-                    "$fname:$i: # metadata for sub $sub_name: ".
-                        "no args property defined");
-            }
-            if ($m{s} && $sub_has_vargs) {
-                $self->log_fatal(
-                    "$fname:$i: multiple # VALIDATE_ARGS for sub $sub_name");
-            }
-            if (!$m{s}) {
-                unless ($meta->{args}{$arg} && $meta->{args}{$arg}{schema}) {
-                    $self->log_fatal(
-                        "$fname:$i: metadata for sub $sub_name: ".
-                            "no schema for argument $arg");
-                }
-            }
-            if ($m{s} && $m{sigil} !~ /[\$%]/) {
-                $self->log_fatal(
-                    "$fname:$i: invalid variable $var ".
-                        "for # VALIDATE_ARGS, must be hash/hashref");
-            }
-            if (!$m{s} && $m{sigil} ne '$') {
-                $self->log_fatal(
-                    "$fname:$i: invalid variable $var ".
-                        "for # VALIDATE_ARG, must be scalar");
-            }
-
-            $munged++;
-            if ($m{s}) {
-                $_ = $m{code} . $gen_args->() . "" . $m{tag};
-            } else {
-                $_ = $m{code} . $gen_arg->() . "" . $m{tag};
-            }
-        }
-    }
-    $check_prev_sub->();
-
-    if ($munged) {
-        $self->log("Adding argument validation code for $fname");
-        $file->content(join "", @content);
     }
 
+    if (!$has_put_postamble && $sub_name) {
+        $self->log_fatal("[sub $sub_name] hasn't put postamble wrapper code yet");
+        return;
+    }
+
+    if (keys %wres) {
+        $self->log_fatal("Some subs are not yet wrapped: ".
+                             join(", ", sort keys %wres));
+        return;
+    }
+
+    $self->log("Adding wrapper code to $fname ...");
+    $file->content(join "", @content);
     return;
 }
 
@@ -336,6 +233,8 @@ __PACKAGE__->meta->make_immutable;
 In dist.ini:
 
  [Rinci::Wrap]
+ ; optional, will be eval'ed as Perl code and passed to wrap_sub()
+ wrap_args = { validate_result => 0, convert => {retry=>2} }
 
 In your module:
 
@@ -346,16 +245,11 @@ In your module:
          arg2 => { },
      },
  };
- # WRAP_PRESUB
  sub foo {
      my %args = @_;
 
-     # WRAP_PREAMBLE
-
      ... your code
      return [200, "OK", "some result"];
-
-     # WRAP_POSTAMBLE
  }
 
 output will be something like:
@@ -371,12 +265,12 @@ output will be something like:
  sub foo {
      my %args = @_;
 
-     ... generated preamble code # WRAP_PREAMBLE
+     ... generated preamble code
 
      ... your code
      return [200, "OK", "some result"];
 
-     ... generated postamble code # WRAP_POSTAMBLE
+     ... generated postamble code
  }
 
 
@@ -387,9 +281,7 @@ code during building. This lets you add functionalities like argument
 validation, result validation, automatic retries, conversion of argument passing
 style, currying, and so on.
 
-Code is inserted in three places (see the above example in Synopsis) in places
-marked respectively by the C<#WRAP_PRESUB>, C<#WRAP_PREAMBLE>, and
-C<#WRAP_POSTAMBLE>. If you do not supply the markers in the target code:
+Code is inserted in three places (see the above example in Synopsis):
 
 =over
 
@@ -403,14 +295,21 @@ before the opening of the subroutine (C<sub NAME {>).
 
 The second part (which is the part to validate arguments and do stuffs before
 performing the function) will be inserted at the start of subroutine body after
-the C<my %args = @_;> statement.
+the C<my %args = @_;> (or C<my $args = $_[0] // {};> if you accept arguments
+from a hashref, or C<my @args = @_;> if you accept arguments from an array, or
+C<my $args = $_[0] // [];> if you accept arguments from an arrayref) statement.
+This should be one of the first things you write after your sub declaration
+before you do anything else.
 
 =item *
 
 The third part (which is the part to validate function result and do stuffs
-after performing the function)
+after performing the function) will be inserted right before the closing of the
+subroutine.
 
 =back
+
+Currently regexes are used to parse the code so things might be rather fragile.
 
 
 =head1 RESTRICTIONS
@@ -499,6 +398,10 @@ option to not compress everything as a single line might be added in the future.
 =item * Option to not compress wrapper code to a single line.
 
 =item * Option to reuse validation code for the same schema.
+
+=item * Option to exclude some subroutines from being wrapped.
+
+=item * Option to specify different wrap_args for different subroutines.
 
 =back
 
