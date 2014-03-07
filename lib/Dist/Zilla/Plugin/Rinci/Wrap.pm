@@ -174,7 +174,7 @@ sub munge_file {
         next unless $sub_name;
 
         # 'my %args = @_' statement
-        if (/^\s*my \s+ [%@$]args \s* = /x) {
+        if (/^\s*my \s+ [\%\@\$]args \s* = /x) {
             # put preamble code
             my $preamble = $wres{$sub_name}{source}{preamble};
             if ($has_postamble) {
