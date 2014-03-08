@@ -34,9 +34,18 @@ has wrap_args => (
 );
 
 has _wrap_args_compiled => (
-    isa => 'Bool',
-    is  => 'rw',
+    isa     => 'Bool',
+    is      => 'rw',
 );
+
+has _prereqs => (
+    is      => 'rw',
+);
+has _checked_modules => (
+    is      => 'rw',
+    default => sub { {} },
+);
+
 
 sub _squish_code {
     my ($self, $code) = @_;
@@ -151,35 +160,44 @@ sub munge_file {
     # code is mentioned in Prereqs. XXX this should use proper method. XXX we
     # should not parse dist.ini for each file.
     {
-        require Module::CoreList;
 
-        (-f "dist.ini") or do {
-            die "dist.ini not found, something's wrong";
-        };
-        my $in_prereqs;
-        my %prereqs;
-        open my($fh), "<", "dist.ini";
-        while (<$fh>) {
-            next unless /\S/;
-            next if /\s*;/;
-            if (/^\s*\[\s*([^\]+]+)\s*\]/) {
-                $in_prereqs = $1 eq 'Prereqs';
-                next;
+        unless ($self->_prereqs) {
+            require Module::CoreList;
+
+            (-f "dist.ini") or do {
+                $self->log_fatal("dist.ini not found, something's wrong");
+            };
+            my $in_prereqs;
+            my %prereqs;
+            $self->log_debug("Parsing prereqs in dist.ini ...");
+            open my($fh), "<", "dist.ini";
+            while (<$fh>) {
+                next unless /\S/;
+                next if /\s*;/;
+                if (/^\s*\[\s*([^\]+]+)\s*\]/) {
+                    $in_prereqs = $1 eq 'Prereqs';
+                    next;
+                }
+                next unless $in_prereqs;
+                /^\s*(\S+)\s*=\s*(\S+)/ or
+                    $self->log_fatal("dist.ini:$.: syntax error");
+                $prereqs{$1} = $2;
             }
-            next unless $in_prereqs;
-            /^\s*(\S+)\s*=\s*(\S+)/ or die "Syntax error in dist.ini:$.";
-            $prereqs{$1} = $2;
+            #use Data::Dump; dd \%prereqs;
+            $self->_prereqs(\%prereqs);
         }
-        #use Data::Dump; dd \%prereqs;
 
-        my $perl_version = $prereqs{perl};
+        my $perl_version = $self->_prereqs->{perl};
 
         for my $mod (sort keys %mods) {
             next if Module::CoreList::is_core($mod, undef, $perl_version);
+            next if $self->_checked_modules->{$mod};
             $self->log_debug("Checking if dist.ini contains Prereqs for $mod");
-            die "Wrapper code requires non-core module '$mod', ".
-                "please specify it in dist.ini's Prereqs section"
-                    unless defined $prereqs{$mod};
+            $self->log_fatal(
+                "Wrapper code requires non-core module '$mod', ".
+                    "please specify it in dist.ini's Prereqs section")
+                unless defined $self->_prereqs->{$mod};
+            $self->_checked_modules->{$mod}++;
         }
     }
 
