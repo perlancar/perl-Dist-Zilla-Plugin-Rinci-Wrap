@@ -151,8 +151,6 @@ sub munge_file {
     my $has_postamble;
     my $has_put_postamble;
 
-    # no package declaration found, deduce from the file name
-
   LINE:
     for (@content) {
         $i++;
