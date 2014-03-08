@@ -277,7 +277,7 @@ sub munge_file {
     }
 
     if (keys %wres) {
-        $self->log_fatal("Some subs are not yet wrapped: ".
+        $self->log_fatal("Some subs are not yet wrapped (probably because I couldn't find sub declaration or a place to insert the preamble/postamble): ".
                              join(", ", sort keys %wres));
     }
 
