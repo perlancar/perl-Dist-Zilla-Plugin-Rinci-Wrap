@@ -251,7 +251,6 @@ sub munge_file {
             unless ($has_put_preamble) {
                 $self->log_fatal("[sub $sub_name] hasn't put preamble ".
                                      "wrapper code yet");
-                return;
             }
             next unless $has_postamble;
 
@@ -275,13 +274,11 @@ sub munge_file {
     if (!$has_put_postamble && $sub_name) {
         $self->log_fatal("[sub $sub_name] hasn't put postamble ".
                              "wrapper code yet");
-        return;
     }
 
     if (keys %wres) {
         $self->log_fatal("Some subs are not yet wrapped: ".
                              join(", ", sort keys %wres));
-        return;
     }
 
     $self->log("Adding wrapper code to $fname ...");
