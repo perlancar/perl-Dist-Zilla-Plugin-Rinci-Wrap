@@ -168,30 +168,39 @@ sub munge_file {
 
         if (/^(\s*)sub \s+ (\w+)/x) {
             $self->log_debug("Found sub declaration: $2");
-            unless ($sub_name) {
-                # this is the first sub, let's put all requires here
-                $_ = $self->_squish_code(join "", @requires) . " " . $_;
-            }
+            my $first_sub = !$sub_name;
             ($sub_indent, $sub_name) = ($1, $2);
             next unless $wres{$sub_name};
             # put modify-meta code
-            $_ = $self->_squish_code($wres{$sub_name}{source}{presub2}) . $_;
+            $_ = "\n$1# [Rinci::Wrap] END presub2\n$_" if $self->debug;
+            $_ = $self->_squish_code($wres{$sub_name}{source}{presub2}). " $_";
+            $_ = "\n$1# [Rinci::Wrap] BEGIN presub2\n$_" if $self->debug;
             $has_put_preamble  = 0 || !$wres{$sub_name}{source}{preamble};
             $has_postamble     = $wres{$sub_name}{source}{postamble} ? 1:0;
             $has_put_postamble = 0 || !$has_postamble;
+
+            if ($first_sub) {
+                # this is the first sub, let's put all requires here
+                $_ = "\n$1# [Rinci::Wrap] END presub1\n$_" if $self->debug;
+                $_ = $self->_squish_code(join "", @requires) . " $_";
+                $_ = "\n$1# [Rinci::Wrap] BEGIN presub1\n$_" if $self->debug;
+            }
+
             next;
         }
 
         next unless $sub_name;
 
         # 'my %args = @_' statement
-        if (/^\s*my \s+ [\%\@\$]args \s* = /x) {
+        if (/^(\s*)my \s+ [\%\@\$]args \s* = /x) {
             # put preamble code
+            $_ = "$_\n$1# [Rinci::Wrap] BEGIN preamble\n" if $self->debug;
             my $preamble = $wres{$sub_name}{source}{preamble};
             if ($has_postamble) {
-                $preamble .= '$_w_res = do { ';
+                $preamble .= $1 . '$_w_res = do {';
             }
-            $_ .= $self->_squish_code($preamble);
+            $_ .= " " . $self->_squish_code($preamble);
+            $_ = "$_\n$1# [Rinci::Wrap] END preamble\n" if $self->debug;
             $has_put_preamble = 1;
             next;
         }
@@ -199,7 +208,8 @@ sub munge_file {
         # sub closing statement
         if (/^${sub_indent}\}/) {
             unless ($has_put_preamble) {
-                $self->log_fatal("[sub $sub_name] hasn't put preamble wrapper code yet");
+                $self->log_fatal("[sub $sub_name] hasn't put preamble ".
+                                     "wrapper code yet");
                 return;
             }
             next unless $has_postamble;
@@ -207,7 +217,11 @@ sub munge_file {
             # put postamble code
             my $postamble = "}; " . # for closing of the do { block
                 $wres{$sub_name}{source}{postamble};
-            $_ = $self->_squish_code($postamble) . " " . $_;
+            $_ = "\n$sub_indent# [Rinci::Wrap] END postamble\n$_"
+                if $self->debug;
+            $_ = $self->_squish_code($postamble) . " $_";
+            $_ = "\n$sub_indent# [Rinci::Wrap] BEGIN postamble\n$_"
+                if $self->debug;
             $has_put_postamble = 1;
 
             # mark sub done by deleting entry from %wres
@@ -218,7 +232,8 @@ sub munge_file {
     }
 
     if (!$has_put_postamble && $sub_name) {
-        $self->log_fatal("[sub $sub_name] hasn't put postamble wrapper code yet");
+        $self->log_fatal("[sub $sub_name] hasn't put postamble ".
+                             "wrapper code yet");
         return;
     }
 
@@ -246,6 +261,8 @@ In dist.ini:
  [Rinci::Wrap]
  ; optional, will be eval'ed as Perl code and passed to wrap_sub()
  wrap_args = { validate_result => 0, convert => {retry=>2} }
+ ; optional, will not squish code and add marker comment
+ debug=1
 
 In your module:
 
