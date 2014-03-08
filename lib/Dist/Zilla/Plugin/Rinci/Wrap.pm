@@ -478,6 +478,17 @@ Admittedly, yes. Wrapper-generated code is formatted as a single long line to
 avoid modifying line numbers, which is desirable when debugging your modules. An
 option to not compress everything as a single line might be added in the future.
 
+=head2 How do I customize wrapping for my function
+
+In the future there will be options you can specify in C<dist.ini>.
+
+For now, you can put in your Rinci function metadata:
+
+ "x.dist.zilla.plugin.rinci.wrap.wrap_args" => { validate_args => 0 },
+
+This will be merged and will override C<wrap_args> keys specified in
+C<dist.ini>.
+
 
 =head1 TODO
 
