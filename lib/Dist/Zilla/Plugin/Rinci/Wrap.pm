@@ -116,7 +116,8 @@ sub munge_file {
     my %wres; # wrap results
     my $metas = do { no strict 'refs'; \%{"$pkg_name\::SPEC"} };
 
-    my @requires; # list of requires that the wrapper code needs
+    my @requires; # list of require lines that the wrapper code needs
+    my %mods; # list of mentioned modules
     # generate wrapper for all subs
     for (keys %$metas) {
         next unless /\A\w+\z/; # skip non-functions
@@ -137,10 +138,49 @@ sub munge_file {
         my $src = $res->[2]{source};
         for (split /^/, $src->{presub1}) {
             push @requires, $_ unless $_ ~~ @requires;
+            if (/^\s*(?:use|require) \s+ (\w+(?:::\w+)*)/x) {
+                $mods{$1}++;
+            }
         }
     }
 
     return unless keys %wres;
+
+    # check dist.ini to make sure that non-core modules required by the wrapper
+    # code is mentioned in Prereqs. XXX this should use proper method. XXX we
+    # should not parse dist.ini for each file.
+    {
+        require Module::CoreList;
+
+        (-f "dist.ini") or do {
+            die "dist.ini not found, something's wrong";
+        };
+        my $in_prereqs;
+        my %prereqs;
+        open my($fh), "<", "dist.ini";
+        while (<$fh>) {
+            next unless /\S/;
+            next if /\s*;/;
+            if (/^\s*\[\s*([^\]+]+)\s*\]/) {
+                $in_prereqs = $1 eq 'Prereqs';
+                next;
+            }
+            next unless $in_prereqs;
+            /^\s*(\S+)\s*=\s*(\S+)/ or die "Syntax error in dist.ini:$.";
+            $prereqs{$1} = $2;
+        }
+        #use Data::Dump; dd \%prereqs;
+
+        my $perl_version = $prereqs{perl};
+
+        for my $mod (sort keys %mods) {
+            next if Module::CoreList::is_core($mod, undef, $perl_version);
+            $self->log_debug("Checking if dist.ini contains Prereqs for $mod");
+            die "Wrapper code requires non-core module '$mod',  ".
+                "please specify it in dist.ini's Prereqs section"
+                    unless defined $prereqs{$mod};
+        }
+    }
 
     my $i = 0; # line number
     my $in_pod;
