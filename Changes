@@ -1,5 +1,13 @@
 Revision history for Dist-Zilla-Rinci-Wrap
 
+0.04     2014-03-08 (SHARYANTO)
+
+         - Some more fixes.
+
+         - Observe x.dist.zilla.plugin.rinci.wrap.wrap_args attribute in
+           function metadata to let functions customize their wrapping.
+
+
 0.03     2014-03-08 (SHARYANTO)
 
          - Check modules required by wrapper code in dist.ini's Prereqs.
