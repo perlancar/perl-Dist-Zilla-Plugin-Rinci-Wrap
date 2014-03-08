@@ -177,7 +177,7 @@ sub munge_file {
         for my $mod (sort keys %mods) {
             next if Module::CoreList::is_core($mod, undef, $perl_version);
             $self->log_debug("Checking if dist.ini contains Prereqs for $mod");
-            die "Wrapper code requires non-core module '$mod',  ".
+            die "Wrapper code requires non-core module '$mod', ".
                 "please specify it in dist.ini's Prereqs section"
                     unless defined $prereqs{$mod};
         }
@@ -209,7 +209,10 @@ sub munge_file {
             $self->log_debug("Found sub declaration: $2");
             my $first_sub = !$sub_name;
             ($sub_indent, $sub_name) = ($1, $2);
-            next unless $wres{$sub_name};
+            unless ($wres{$sub_name}) {
+                $self->log_debug("Skipped wrapping sub $sub_name (no metadata)");
+                next;
+            }
             # put modify-meta code
             $_ = "\n$1# [Rinci::Wrap] END presub2\n$_" if $self->debug;
             $_ = $self->_squish_code($wres{$sub_name}{source}{presub2}). " $_";
@@ -231,7 +234,8 @@ sub munge_file {
         next unless $sub_name;
 
         # 'my %args = @_' statement
-        if (/^(\s*)my \s+ [\%\@\$]args \s* = /x) {
+        if (/^(\s*)(my \s+ [\%\@\$]args \s* = .+)/x) {
+            $self->log_debug("[sub $sub_name] Found a place to insert preamble (after '$2' statement)");
             # put preamble code
             $_ = "$_\n$1# [Rinci::Wrap] BEGIN preamble\n" if $self->debug;
             my $preamble = $wres{$sub_name}{source}{preamble};
@@ -246,13 +250,14 @@ sub munge_file {
 
         # sub closing statement
         if (/^${sub_indent}\}/) {
+            $self->log_debug("Found sub closing: $sub_name");
             next unless $wres{$sub_name};
 
             unless ($has_put_preamble) {
                 $self->log_fatal("[sub $sub_name] hasn't put preamble ".
                                      "wrapper code yet");
             }
-            next unless $has_postamble;
+            goto DONE_POSTAMBLE unless $has_postamble;
 
             # put postamble code
             my $postamble = "}; " . # for closing of the do { block
@@ -264,6 +269,7 @@ sub munge_file {
                 if $self->debug;
             $has_put_postamble = 1;
 
+          DONE_POSTAMBLE:
             # mark sub done by deleting entry from %wres
             delete $wres{$sub_name};
 
