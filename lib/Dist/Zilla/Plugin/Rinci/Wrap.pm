@@ -124,6 +124,7 @@ sub munge_file {
         $self->log_debug("Generating wrapper code for sub '$_' ...");
         my $res = wrap_sub(
             %{ $wrap_args },
+            %{ $metas->{$_}{"x.dist.zilla.plugin.rinci.wrap.wrap_args"} // {} },
             sub_name  => "$pkg_name\::$_",
             meta      => $metas->{$_},
             meta_name => "\$$pkg_name\::SPEC{$_}",
