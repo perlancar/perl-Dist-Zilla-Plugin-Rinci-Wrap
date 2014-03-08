@@ -245,6 +245,8 @@ sub munge_file {
 
         # sub closing statement
         if (/^${sub_indent}\}/) {
+            next unless $wres{$sub_name};
+
             unless ($has_put_preamble) {
                 $self->log_fatal("[sub $sub_name] hasn't put preamble ".
                                      "wrapper code yet");
