@@ -1,5 +1,10 @@
 Revision history for Dist-Zilla-Rinci-Wrap
 
+0.03     2014-03-08 (SHARYANTO)
+
+         - Check modules required by wrapper code in dist.ini's Prereqs.
+
+
 0.02     2014-03-08 (SHARYANTO)
 
          - Minor fixes and tidy output.
