@@ -77,11 +77,22 @@ sub munge_file {
     my $fname = $file->name;
     $self->log_debug("Processing file $fname ...");
 
-    unless ($fname =~ m!lib/(.+\.pm)$!) {
-        #$self->log_debug("Skipping: '$fname' not a module");
+    my $is_lib;
+    my $req_name = $1;
+    if ($fname =~ m!lib/(.+\.pm)$!) {
+        $is_lib = 1;
+        $req_name = $1;
+    } elsif ($fname =~ m!(?:bin|script)/.+$!) {
+        # we need to just compile the script but not execute it, like 'perl -c',
+        # but we also need to read its %SPEC. hopefully most apps put their code
+        # in lib/App/Foo.pm instead of in the script bin/foo itself.
+        $self->log("$fname: WARN: Embedding wrapper code on script ".
+                       "not yet supported, skipped");
+        return;
+    } else {
+        #$self->log_debug("$fname: not a module or a script, skipped");
         return;
     }
-    my $req_name = $1;
 
     my $pkg_name = $req_name;
     $pkg_name =~ s/\.pm$//;
