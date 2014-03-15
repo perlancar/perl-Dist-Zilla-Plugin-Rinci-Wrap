@@ -1,5 +1,10 @@
 Revision history for Dist-Zilla-Rinci-Wrap
 
+0.05     2014-03-15 (SHARYANTO)
+
+         - No functional changes. Fix missing dependency to Dist::Zilla [CT].
+
+
 0.04     2014-03-08 (SHARYANTO)
 
          - Some more fixes.
