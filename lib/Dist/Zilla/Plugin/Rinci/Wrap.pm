@@ -489,19 +489,3 @@ an attribute in your function metadata:
 which will be merged and will override C<wrap_args> keys specified in
 C<dist.ini>.
 
-
-=head1 TODO
-
-=over
-
-=item * Use L<PPI> instead of fragile regex.
-
-=item * Option to reuse validation code for the same schema.
-
-=item * Option to exclude some subroutines from being wrapped.
-
-=item * Option to specify different wrap_args for different subroutines.
-
-=back
-
-=cut
