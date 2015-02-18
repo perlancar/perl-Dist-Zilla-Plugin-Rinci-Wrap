@@ -41,7 +41,7 @@ has _wrap_args_compiled => (
 has _prereqs => (
     is      => 'rw',
 );
-has _checked_modules => (
+has _registered_modules => (
     is      => 'rw',
     default => sub { {} },
 );
@@ -156,48 +156,16 @@ sub munge_file {
 
     return unless keys %wres;
 
-    # check dist.ini to make sure that non-core modules required by the wrapper
-    # code is mentioned in Prereqs. XXX this should use proper method. XXX we
-    # should not parse dist.ini for each file.
+    # register prereqs for validator code
     {
-
-        unless ($self->_prereqs) {
-            require Module::CoreList;
-
-            (-f "dist.ini") or do {
-                $self->log_fatal("dist.ini not found, something's wrong");
-            };
-            my $in_prereqs;
-            my %prereqs;
-            $self->log_debug("Parsing prereqs in dist.ini ...");
-            open my($fh), "<", "dist.ini";
-            while (<$fh>) {
-                next unless /\S/;
-                next if /\s*;/;
-                if (/^\s*\[\s*([^\]+]+)\s*\]/) {
-                    $in_prereqs = $1 eq 'Prereqs';
-                    next;
-                }
-                next unless $in_prereqs;
-                /^\s*(\S+)\s*=\s*(\S+)/ or
-                    $self->log_fatal("dist.ini:$.: syntax error");
-                $prereqs{$1} = $2;
-            }
-            #use Data::Dump; dd \%prereqs;
-            $self->_prereqs(\%prereqs);
-        }
-
-        my $perl_version = $self->_prereqs->{perl};
-
+        require Module::CoreList;
         for my $mod (sort keys %mods) {
-            next if Module::CoreList::is_core($mod, undef, $perl_version);
-            next if $self->_checked_modules->{$mod};
-            $self->log_debug("Checking if dist.ini contains Prereqs for $mod");
-            $self->log_fatal(
-                "Wrapper code requires non-core module '$mod', ".
-                    "please specify it in dist.ini's Prereqs section")
-                unless defined $self->_prereqs->{$mod};
-            $self->_checked_modules->{$mod}++;
+            next if Module::CoreList::is_core($mod, undef);
+            next if $self->_registered_modules->{$mod};
+            $self->log_debug("Registering $mod");
+            $self->zilla->register_prereqs(
+                {phase=>'runtime'}, $mod => 0);
+            $self->_registered_modules->{$mod}++;
         }
     }
 
@@ -493,4 +461,3 @@ an attribute in your function metadata:
 
 which will be merged and will override C<wrap_args> keys specified in
 C<dist.ini>.
-
