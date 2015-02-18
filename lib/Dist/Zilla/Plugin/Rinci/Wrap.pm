@@ -223,12 +223,17 @@ sub munge_file {
             next;
         }
 
-        if (/^(\s*)sub \s+ (\w+)/x) {
-            $self->log_debug("Found sub declaration: $2");
+        if (/^(\s*)sub \s+ (\w+)(?: \s* \{ \s* (\#\s*NO_RINCI_WRAP) )?/x) {
+            my $no_wrap;
+            ($sub_indent, $sub_name, $no_wrap) = ($1, $2, $3);
+            $self->log_debug("Found sub declaration: $sub_name");
             my $first_sub = !$sub_name;
-            ($sub_indent, $sub_name) = ($1, $2);
             unless ($wres{$sub_name}) {
                 $self->log_debug("Skipped wrapping sub $sub_name (no metadata)");
+                next;
+            }
+            if ($no_wrap) {
+                $self->log_debug("Skipped wrapping sub $sub_name (#NO_RINCI_WRAP directive)");
                 next;
             }
             # put modify-meta code
