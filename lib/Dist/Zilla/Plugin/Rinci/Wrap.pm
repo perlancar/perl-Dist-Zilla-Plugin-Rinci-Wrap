@@ -149,7 +149,7 @@ sub munge_file {
         my $src = $res->[2]{source};
         for (split /^/, $src->{presub1}) {
             push @requires, $_ unless $_ ~~ @requires;
-            if (/^\s*(?:use|require) \s+ (\w+(?:::\w+)*)/x) {
+            if (/^\s*(?:use|require|no) \s+ (\w+(?:::\w+)*)/x) {
                 $mods{$1}++;
             }
         }
