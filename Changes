@@ -1,5 +1,13 @@
 Revision history for Dist-Zilla-Rinci-Wrap
 
+0.06     2015-02-22 (PERLANCAR)
+
+         - Observe #NO_RINCI_WRAP directive.
+
+         - [ux] Instead of complaining about missing prereq in dist.ini, add
+           dynamically with register_prereqs().
+
+
 0.05     2014-03-15 (SHARYANTO)
 
          - No functional changes. Fix missing dependency to Dist::Zilla [CT].
