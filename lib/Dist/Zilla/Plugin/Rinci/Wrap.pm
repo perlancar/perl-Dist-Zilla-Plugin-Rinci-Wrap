@@ -184,6 +184,8 @@ sub munge_file {
     my $has_put_preamble;
     my $has_put_postamble;
 
+    my $sig = " ## this line is put by " . __PACKAGE__;
+
   LINE:
     for (@content) {
         $i++;
@@ -234,7 +236,8 @@ sub munge_file {
             if ($first_sub) {
                 # this is the first sub, let's put all requires here
                 $_ = "\n$1# [Rinci::Wrap] END presub1\n$_" if $self->debug;
-                $_ = $self->_squish_code(join "", @requires) . " $_";
+                chomp;
+                $_ = $self->_squish_code(join "", @requires) . " $_" . $sig . "\n";
                 $_ = "\n$1# [Rinci::Wrap] BEGIN presub1\n$_" if $self->debug;
             }
 
@@ -261,7 +264,7 @@ sub munge_file {
                     $preamble .= $indent . '$_w_res = do {';
                 }
                 s/\n//;
-                $_ .= " " . $self->_squish_code($preamble) . "\n";
+                $_ .= " " . $self->_squish_code($preamble) . $sig . "\n";
                 $_ = "$_\n$indent# [Rinci::Wrap] END preamble\n" if $self->debug;
                 $has_put_preamble = 1;
                 next LINE;
@@ -285,7 +288,8 @@ sub munge_file {
                     $wres{$sub_name}{source}{postamble};
                 $_ = "\n$sub_indent# [Rinci::Wrap] END postamble\n$_"
                     if $self->debug;
-                $_ = $self->_squish_code($postamble) . " $_";
+                chomp;
+                $_ = $self->_squish_code($postamble) . " $_" . $sig . "\n";
                 $_ = "\n$sub_indent# [Rinci::Wrap] BEGIN postamble\n$_"
                     if $self->debug;
                 $has_put_postamble = 1;
