@@ -1,5 +1,11 @@
 Revision history for Dist-Zilla-Rinci-Wrap
 
+0.07    2015-02-25 (PERLANCAR)
+
+	- Put in '## this line put by Dist::Zilla::Plugin::Rinci::Wrap'
+	  markers in the source code.
+
+
 0.06     2015-02-22 (PERLANCAR)
 
          - Observe #NO_RINCI_WRAP directive.
