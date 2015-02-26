@@ -1,12 +1,14 @@
 package Dist::Zilla::Plugin::Rinci::Wrap;
 
+# DATE
+# VERSION
+
 use 5.010001;
 use strict;
 use warnings;
 
+use Data::Dmp::Meta ();
 use Perinci::Sub::Wrapper qw(wrap_sub);
-
-# VERSION
 
 use Moose;
 use experimental 'smartmatch';
@@ -222,7 +224,8 @@ sub munge_file {
                 next;
             }
             # put modify-meta code
-            my $presub2 = $self->_squish_code($wres{$sub_name}{source}{presub2});
+            #my $presub2 = $self->_squish_code($wres{$sub_name}{source}{presub2});
+            my $presub2 = "\$SPEC{$sub_name} = " . Data::Dmp::Meta::dmp({old_data=>"\$SPEC{$sub_name}"}, $wres{$sub_name}{meta}) . ";";
             if ($presub2 =~ /\S/) {
                 $_ = "\n$1# [Rinci::Wrap] END presub2\n$_" if $self->debug;
                 $_ = "$presub2 $_";
