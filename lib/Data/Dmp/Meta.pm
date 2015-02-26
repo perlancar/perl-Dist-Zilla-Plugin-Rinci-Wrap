@@ -150,6 +150,8 @@ sub dmp { goto &_dd_or_dmp }
 1;
 # ABSTRACT: A fork of Data::Dmp
 
+=for Pod::Coverage .+
+
 =head1 SYNOPSIS
 
  use Data::Dmp::Meta;

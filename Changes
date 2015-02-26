@@ -1,5 +1,12 @@
 Revision history for Dist-Zilla-Rinci-Wrap
 
+0.08    2015-02-26 (PERLANCAR)
+
+	- Generate code to set $SPEC{foo} to the new metadata returned by
+	  wrapper, not the old one (e.g. with logs entry, result_naked etc
+	  normalized).
+
+
 0.07    2015-02-25 (PERLANCAR)
 
 	- Put in '## this line put by Dist::Zilla::Plugin::Rinci::Wrap'
