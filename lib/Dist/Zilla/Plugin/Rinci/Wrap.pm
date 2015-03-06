@@ -223,13 +223,13 @@ sub munge_file {
                 $sub_name = undef;
                 next;
             }
-            # put modify-meta code
-            #my $presub2 = $self->_squish_code($wres{$sub_name}{source}{presub2});
+            #use DD; dd $wres{$sub_name}{source};
+            # generate new metadata to replace the old
             my $presub2 = "\$SPEC{$sub_name} = " . Data::Dmp::Meta::dmp({old_data=>"\$SPEC{$sub_name}"}, $wres{$sub_name}{meta}) . ";";
             if ($presub2 =~ /\S/) {
-                $_ = "\n$1# [Rinci::Wrap] END presub2\n$_" if $self->debug;
+                $_ = "\n$_# [Rinci::Wrap] END presub2\n$_" if $self->debug;
                 $_ = "$presub2 $_";
-                $_ = "\n$1# [Rinci::Wrap] BEGIN presub2\n$_" if $self->debug;
+                $_ = "\n$_# [Rinci::Wrap] BEGIN presub2\n$_" if $self->debug;
             }
             $has_preamble      = $wres{$sub_name}{source}{preamble} =~ /\S/;
             $has_postamble     = $wres{$sub_name}{source}{postamble} =~ /\S/;
