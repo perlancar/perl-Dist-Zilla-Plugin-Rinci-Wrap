@@ -189,19 +189,19 @@ sub munge_file {
     my $sig = " ## this line is put by " . __PACKAGE__;
 
   LINE:
-    for (@content) {
+    for my $line (@content) {
         $i++;
-        if (/^=cut\b/x) {
+        if ($line =~ /^=cut\b/x) {
             $in_pod = 0;
             next;
         }
         next if $in_pod;
-        if (/^=\w+/x) {
+        if ($line =~ /^=\w+/x) {
             $in_pod++;
             next;
         }
 
-        if (/^(\s*)sub \s+ (\w+)(?: \s* \{ \s* (\#\s*NO_RINCI_WRAP) )?/x) {
+        if ($line =~ /^(\s*)sub \s+ (\w+)(?: \s* \{ \s* (\#\s*NO_RINCI_WRAP) )?/x) {
             my $no_wrap;
             $self->log_debug("Found sub declaration: $2");
             my $first_sub = !$sub_name;
@@ -223,26 +223,23 @@ sub munge_file {
                 $sub_name = undef;
                 next;
             }
-            #use DD; dd $wres{$sub_name}{source};
-            # generate new metadata to replace the old
             my $presub2 = "\$SPEC{$sub_name} = " . Data::Dmp::Meta::dmp({old_data=>"\$SPEC{$sub_name}"}, $wres{$sub_name}{meta}) . ";";
             if ($presub2 =~ /\S/) {
-                $_ = "\n$_# [Rinci::Wrap] END presub2\n$_" if $self->debug;
-                $_ = "$presub2 $_";
-                $_ = "\n$_# [Rinci::Wrap] BEGIN presub2\n$_" if $self->debug;
+                $line = "\n$sub_indent# [Rinci::Wrap] END presub2\n$line" if $self->debug;
+                $line = "$presub2 $line";
+                $line = "\n$sub_indent# [Rinci::Wrap] BEGIN presub2\n$line" if $self->debug;
             }
             $has_preamble      = $wres{$sub_name}{source}{preamble} =~ /\S/;
             $has_postamble     = $wres{$sub_name}{source}{postamble} =~ /\S/;
-            say "D:has_postamble=$has_postamble";
             $has_put_preamble  = 0;
             $has_put_postamble = 0;
 
             if ($first_sub) {
                 # this is the first sub, let's put all requires here
-                $_ = "\n$_# [Rinci::Wrap] END presub1\n$_" if $self->debug;
-                chomp;
-                $_ = $self->_squish_code(join "", @requires) . " $_" . $sig . "\n";
-                $_ = "\n$_# [Rinci::Wrap] BEGIN presub1\n$_" if $self->debug;
+                $line = "\n$sub_indent# [Rinci::Wrap] END presub1\n$line" if $self->debug;
+                chomp $line;
+                $line = $self->_squish_code(join "", @requires) . " $line" . $sig . "\n";
+                $line = "\n$sub_indent# [Rinci::Wrap] BEGIN presub1\n$line" if $self->debug;
             }
 
             next;
@@ -251,7 +248,7 @@ sub munge_file {
         next unless $sub_name;
 
         # 'my %args = @_' statement
-        if (/^(\s*)(my \s+ [\%\@\$]args \s* = .+)/x) {
+        if ($line =~ /^(\s*)(my \s+ [\%\@\$]args \s* = .+)/x) {
             {
                 last unless $has_preamble && !$has_put_preamble;
                 $self->log_debug("[sub $sub_name] Found a place to insert preamble (after '$2' statement)");
@@ -259,24 +256,26 @@ sub munge_file {
                 my $indent = $1;
 
                 # remove comment that might interfere with preamble adding
-                s/(.+)#.*/$1/;
+                $line =~ s/(.+)#.*/$1/;
 
                 # put preamble code
-                $_ = "$_\n$indent# [Rinci::Wrap] BEGIN preamble\n" if $self->debug;
+                $line = "$indent\n$indent# [Rinci::Wrap] BEGIN preamble\n$line" if $self->debug;
                 my $preamble = $wres{$sub_name}{source}{preamble};
                 if ($has_postamble) {
+                    # remove comment that might interfere with adding
+                    $preamble =~ s/(.+)#.*/$1/;
                     $preamble .= $indent . '$_w_res = do {';
                 }
                 s/\n//;
-                $_ .= " " . $self->_squish_code($preamble) . $sig . "\n";
-                $_ = "$_\n$indent# [Rinci::Wrap] END preamble\n" if $self->debug;
+                $line .= " " . $self->_squish_code($preamble) . $sig . "\n";
+                $line = "$line\n$indent# [Rinci::Wrap] END preamble\n" if $self->debug;
                 $has_put_preamble = 1;
                 next LINE;
             }
         }
 
         # sub closing statement
-        if (/^${sub_indent}\}/) {
+        if ($line =~ /^${sub_indent}\}/) {
             $self->log_debug("Found sub closing: $sub_name");
             next unless $wres{$sub_name};
 
@@ -290,11 +289,11 @@ sub munge_file {
                 # put postamble code
                 my $postamble = "}; " . # for closing of the do { block
                     $wres{$sub_name}{source}{postamble};
-                $_ = "\n$sub_indent# [Rinci::Wrap] END postamble\n$_"
+                $line = "\n$sub_indent# [Rinci::Wrap] END postamble\n$line"
                     if $self->debug;
                 chomp;
-                $_ = $self->_squish_code($postamble) . " $_" . $sig . "\n";
-                $_ = "\n$sub_indent# [Rinci::Wrap] BEGIN postamble\n$_"
+                $line = $self->_squish_code($postamble) . " $line" . $sig . "\n";
+                $line = "\n$sub_indent# [Rinci::Wrap] BEGIN postamble\n$line"
                     if $self->debug;
                 $has_put_postamble = 1;
 
