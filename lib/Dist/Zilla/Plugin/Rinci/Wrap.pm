@@ -233,15 +233,16 @@ sub munge_file {
             }
             $has_preamble      = $wres{$sub_name}{source}{preamble} =~ /\S/;
             $has_postamble     = $wres{$sub_name}{source}{postamble} =~ /\S/;
+            say "D:has_postamble=$has_postamble";
             $has_put_preamble  = 0;
             $has_put_postamble = 0;
 
             if ($first_sub) {
                 # this is the first sub, let's put all requires here
-                $_ = "\n$1# [Rinci::Wrap] END presub1\n$_" if $self->debug;
+                $_ = "\n$_# [Rinci::Wrap] END presub1\n$_" if $self->debug;
                 chomp;
                 $_ = $self->_squish_code(join "", @requires) . " $_" . $sig . "\n";
-                $_ = "\n$1# [Rinci::Wrap] BEGIN presub1\n$_" if $self->debug;
+                $_ = "\n$_# [Rinci::Wrap] BEGIN presub1\n$_" if $self->debug;
             }
 
             next;
