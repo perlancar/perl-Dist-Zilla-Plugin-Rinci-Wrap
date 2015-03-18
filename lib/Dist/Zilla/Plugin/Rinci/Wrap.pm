@@ -266,7 +266,7 @@ sub munge_file {
                     $preamble =~ s/(.+)#.*/$1/;
                     $preamble .= $indent . '$_w_res = do {';
                 }
-                s/\n//;
+                $line =~ s/\n//;
                 $line .= " " . $self->_squish_code($preamble) . $sig . "\n";
                 $line = "$line\n$indent# [Rinci::Wrap] END preamble\n" if $self->debug;
                 $has_put_preamble = 1;
@@ -291,7 +291,7 @@ sub munge_file {
                     $wres{$sub_name}{source}{postamble};
                 $line = "\n$sub_indent# [Rinci::Wrap] END postamble\n$line"
                     if $self->debug;
-                chomp;
+                chomp $line;
                 $line = $self->_squish_code($postamble) . " $line" . $sig . "\n";
                 $line = "\n$sub_indent# [Rinci::Wrap] BEGIN postamble\n$line"
                     if $self->debug;
