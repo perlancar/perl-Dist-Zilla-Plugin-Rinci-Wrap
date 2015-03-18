@@ -1,5 +1,14 @@
 Revision history for Dist-Zilla-Rinci-Wrap
 
+0.10    2015-03-18 (PERLANCAR)
+
+	- No functional changes.
+
+	- [Bugfix] Forgot to change target variable when refactoring $_ ->
+	  $line (boy, implicit variable should not be used for loops,
+	  ever!).
+
+
 0.09    2015-03-06 (PERLANCAR)
 
         - [Bugfix] Fix variable names.
