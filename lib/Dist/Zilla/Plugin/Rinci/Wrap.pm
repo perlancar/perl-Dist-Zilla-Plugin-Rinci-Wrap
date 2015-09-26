@@ -48,6 +48,14 @@ has _registered_modules => (
     default => sub { {} },
 );
 
+has exclude_func => (
+    is => 'rw',
+);
+has include_func => (
+    is => 'rw',
+);
+
+sub mvp_multivalue_args { qw(exclude_func include_func) }
 
 sub _squish_code {
     my ($self, $code) = @_;
@@ -131,23 +139,33 @@ sub munge_file {
     my @requires; # list of require lines that the wrapper code needs
     my %mods; # list of mentioned modules
     # generate wrapper for all subs
-    for (keys %$metas) {
-        next unless /\A\w+\z/; # skip non-functions
-        $self->log_debug("Generating wrapper code for sub '$_' ...");
+    for my $sub_name (keys %$metas) {
+        next unless $sub_name =~ /\A\w+\z/; # skip non-functions
+        $self->log_debug("Generating wrapper code for sub '$sub_name' ...");
+        if ($self->exclude_func &&
+                grep { $_ eq $sub_name } @{ $self->exclude_func }) {
+            $self->log_debug("Skipped sub '$sub_name' (listed in exclude_func) ...");
+            next;
+        }
+        if ($self->include_func &&
+                !(grep { $_ eq $sub_name } @{ $self->include_func })) {
+            $self->log_debug("Skipped sub '$sub_name' (not listed in include_func) ...");
+            next;
+        }
         my $res = wrap_sub(
             %{ $wrap_args },
             %{ $metas->{$_}{"x.dist.zilla.plugin.rinci.wrap.wrap_args"} // {} },
-            sub_name  => "$pkg_name\::$_",
-            meta      => $metas->{$_},
-            meta_name => "\$$pkg_name\::SPEC{$_}",
+            sub_name  => "$pkg_name\::$sub_name",
+            meta      => $metas->{$sub_name},
+            meta_name => "\$$pkg_name\::SPEC{$sub_name}",
             _extra_sah_compiler_args => {comment=>0},
             embed=>1,
         );
         unless ($res->[0] == 200) {
-            $self->log_fatal("Can't wrap $_: $res->[0] - $res->[1]");
+            $self->log_fatal("Can't wrap $sub_name: $res->[0] - $res->[1]");
             return;
         }
-        $wres{$_} = $res->[2];
+        $wres{$sub_name} = $res->[2];
         my $src = $res->[2]{source};
         for (split /^/, $src->{presub1}) {
             push @requires, $_ unless $_ ~~ @requires;
@@ -155,7 +173,7 @@ sub munge_file {
                 $mods{$1}++;
             }
         }
-    }
+    } # for each key of metas
 
     return unless keys %wres;
 
@@ -323,13 +341,19 @@ __PACKAGE__->meta->make_immutable;
 
 =head1 SYNOPSIS
 
-In dist.ini:
+In F<dist.ini>:
 
  [Rinci::Wrap]
  ; optional, will be eval'ed as Perl code and passed to wrap_sub()
  wrap_args = { validate_result => 0, convert => {retry=>2} }
  ; optional, will not squish code and add marker comment
  debug=1
+ ; optional, exclude some functions
+ ;exclude_func=func1
+ ;exclude_func=func2
+ ; optional, only include specified functions
+ ;include_func=func3
+ ;include_func=func4
 
 In your module:
 
