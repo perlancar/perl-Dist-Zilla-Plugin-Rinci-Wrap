@@ -8,7 +8,6 @@ use strict;
 use warnings;
 
 use Data::Dmp::Meta ();
-use Data::Dump ();
 use Perinci::Sub::Wrapper qw(wrap_sub);
 
 use Moose;
@@ -283,8 +282,8 @@ sub munge_file {
                 my $preamble = $wres{$sub_name}{source}{preamble};
                 $line =~ s/\n//;
                 $line .= " " . $self->_squish_code($preamble) .
-                    ($self->debug ? "\n$indent" : "") . '$_w_res = do {';
-                $sig . "\n";
+                    ($self->debug ? "\n$indent" : "") . '$_w_res = do {' .
+                    $sig . "\n";
                 $line = "$line\n$indent# [Rinci::Wrap] END preamble\n" if $self->debug;
                 $has_put_preamble = 1;
                 next LINE;
