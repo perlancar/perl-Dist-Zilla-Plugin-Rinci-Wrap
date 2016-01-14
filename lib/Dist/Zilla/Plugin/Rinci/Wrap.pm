@@ -8,6 +8,7 @@ use strict;
 use warnings;
 
 use Data::Dmp::Meta ();
+use Data::Dump ();
 use Perinci::Sub::Wrapper qw(wrap_sub);
 
 use Moose;
@@ -152,7 +153,7 @@ sub munge_file {
             $self->log_debug("Skipped sub '$sub_name' (not listed in include_func) ...");
             next;
         }
-        my $res = wrap_sub(
+        my %wrap_args = (
             %{ $wrap_args },
             %{ $metas->{$_}{"x.dist.zilla.plugin.rinci.wrap.wrap_args"} // {} },
             sub_name  => "$pkg_name\::$sub_name",
@@ -161,6 +162,7 @@ sub munge_file {
             _extra_sah_compiler_args => {comment=>0},
             embed=>1,
         );
+        my $res = wrap_sub(%wrap_args);
         unless ($res->[0] == 200) {
             $self->log_fatal("Can't wrap $sub_name: $res->[0] - $res->[1]");
             return;
@@ -274,18 +276,15 @@ sub munge_file {
                 my $indent = $1;
 
                 # remove comment that might interfere with preamble adding
-                $line =~ s/(.+)#.*/$1/;
+                $line =~ s/(.+?)#.*/$1/;
 
                 # put preamble code
                 $line = "$indent\n$indent# [Rinci::Wrap] BEGIN preamble\n$line" if $self->debug;
                 my $preamble = $wres{$sub_name}{source}{preamble};
-                if ($has_postamble) {
-                    # remove comment that might interfere with adding
-                    $preamble =~ s/(.+)#.*/$1/;
-                    $preamble .= $indent . '$_w_res = do {';
-                }
                 $line =~ s/\n//;
-                $line .= " " . $self->_squish_code($preamble) . $sig . "\n";
+                $line .= " " . $self->_squish_code($preamble) .
+                    ($self->debug ? "\n$indent" : "") . '$_w_res = do {';
+                $sig . "\n";
                 $line = "$line\n$indent# [Rinci::Wrap] END preamble\n" if $self->debug;
                 $has_put_preamble = 1;
                 next LINE;
