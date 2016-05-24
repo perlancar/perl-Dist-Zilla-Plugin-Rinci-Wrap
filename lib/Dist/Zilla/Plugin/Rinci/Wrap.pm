@@ -515,3 +515,13 @@ an attribute in your function metadata:
 
 which will be merged and will override C<wrap_args> keys specified in
 C<dist.ini>.
+
+
+=head1 SEE ALSO
+
+If you are only concerned with argument validation, you can take a look at:
+L<Dist::Zilla::Plugin::Rinci::Validate>, L<Data::Sah::Manual::ParamsValidating>.
+
+If you are only concerned with function return validation, you can take a look
+at: L<Dist::Zilla::Plugin::Rinci::Validate>,
+L<Data::Sah::Manual::ResultValidating>.
