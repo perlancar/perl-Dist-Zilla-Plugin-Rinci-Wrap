@@ -1,5 +1,16 @@
 Revision history for Dist-Zilla-Rinci-Wrap
 
+0.13    2016-06-02 (PERLANCAR)
+
+	- No functional changes.
+
+	- Bump prereq version Perinci::Sub::Wrapper to 0.83.
+
+	- [doc] Mention Dist::Zilla::Plugin::Rinci::Validate,
+	  Data::Sah::Manual::ParamsValidating,
+	  Data::Sah::Manual::ResultValidating.
+
+
 0.12    2016-01-14 (PERLANCAR)
 
 	- [Bugfix] Fix removed code after comment due to comment removal,
