@@ -2,3 +2,4 @@ Dist-Zilla-Plugin-Rinci-Wrap-*
 .build
 *~
 nytprof*
+.DS_Store
